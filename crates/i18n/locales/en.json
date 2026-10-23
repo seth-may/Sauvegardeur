@@ -1,0 +1,4 @@
+{
+  "backup.file_copied": { "one": "{count} file backed up", "other": "{count} files backed up" },
+  "schema.unknown_future": { "other": "Newer format not supported (found {found}, max {max})" }
+}

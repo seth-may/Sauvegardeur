@@ -1,0 +1,4 @@
+{
+  "backup.file_copied": { "one": "{count} fichier sauvegardé", "other": "{count} fichiers sauvegardés" },
+  "schema.unknown_future": { "other": "Format plus récent non pris en charge (trouvé {found}, maximum {max})" }
+}
