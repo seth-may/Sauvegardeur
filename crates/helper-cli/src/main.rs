@@ -8,7 +8,10 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
-enum Request { Hello, Ping, Cancel, Backup { source: String, repo: String } }
+enum Request { Hello, Ping, Cancel, Backup { source: String, repo: String },
+    Verify { repo: String, id: Option<String>, #[serde(default)] full: bool },
+    Restore { repo: String, id: String, subpath: Option<String>, target: String },
+    List { repo: String } }
 
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -17,6 +20,9 @@ enum Response {
     Progress { total: u64, processed: u64, copied: u64, bytes: u64 },
     Done { id: String, status: store::SnapshotStatus, scanned: u64, copied: u64, reused: u64, bytes: u64, errors: Vec<Event> },
     Failed { event: Event },
+    Verified { id: String, full: bool, problems: Vec<Event> },
+    Restored { count: u64 },
+    Snapshots { ids: Vec<String>, latest_success: Option<String> },
 }
 
 type Out = Arc<Mutex<std::io::Stdout>>;
@@ -34,25 +40,47 @@ fn main() {
             Ok(Request::Hello) => send(&out, &Response::Hello { protocol: PROTOCOL_VERSION }),
             Ok(Request::Ping) => send(&out, &Response::Pong),
             Ok(Request::Cancel) => cancel.store(true, Ordering::Relaxed),
-            Ok(Request::Backup { source, repo }) => {
+            Ok(req @ (Request::Backup { .. } | Request::Verify { .. } | Request::Restore { .. })) => {
                 if busy.swap(true, Ordering::SeqCst) { send(&out, &Response::Failed { event: Event::new("job.busy") }); continue; }
                 cancel.store(false, Ordering::Relaxed);
                 let (o, b, c) = (out.clone(), busy.clone(), cancel.clone());
                 std::thread::spawn(move || {
-                    let o2 = o.clone();
-                    let res = store::backup::run_backup_with(source.as_ref(), repo.as_ref(), &c, &mut |p| {
-                        send(&o2, &Response::Progress { total: p.total, processed: p.processed, copied: p.copied, bytes: p.bytes })
-                    });
-                    match res {
-                        Ok(r) => send(&o, &Response::Done { id: r.id, status: r.status, scanned: r.scanned, copied: r.copied, reused: r.reused, bytes: r.bytes, errors: r.errors }),
-                        Err(event) => send(&o, &Response::Failed { event }),
-                    }
-                    b.store(false, Ordering::SeqCst);
+                    let resp = run_job(req, &o, &c).unwrap_or_else(|event| Response::Failed { event });
+                    b.store(false, Ordering::SeqCst); // libérer AVANT d'annoncer la fin : le client peut enchaîner
+                    send(&o, &resp);
                 });
             }
+            Ok(Request::List { repo }) => match store::Repo::open_or_init(repo.as_ref()) {
+                Ok(r) => send(&out, &Response::Snapshots { ids: r.list_snapshots(), latest_success: r.latest_success() }),
+                Err(event) => send(&out, &Response::Failed { event }),
+            },
             Err(_) => send(&out, &Response::Error { code: "protocol.bad_request".into() }),
         }
     }
     // Fin de stdin : laisser le travail en cours se terminer proprement (ou être tué par le parent).
     while busy.load(Ordering::SeqCst) { std::thread::sleep(std::time::Duration::from_millis(20)); }
+}
+
+fn run_job(req: Request, o: &Out, c: &AtomicBool) -> Result<Response, Event> {
+    Ok(match req {
+        Request::Backup { source, repo } => {
+            let r = store::backup::run_backup_with(source.as_ref(), repo.as_ref(), c, &mut |p| {
+                send(o, &Response::Progress { total: p.total, processed: p.processed, copied: p.copied, bytes: p.bytes })
+            })?;
+            Response::Done { id: r.id, status: r.status, scanned: r.scanned, copied: r.copied, reused: r.reused, bytes: r.bytes, errors: r.errors }
+        }
+        Request::Verify { repo, id, full } => {
+            let r = store::Repo::open_or_init(repo.as_ref())?;
+            let id = id.or_else(|| r.latest_success()).ok_or_else(|| Event::new("snapshot.unreadable").arg("path", "latest_success"))?;
+            let mode = if full { store::VerifyMode::Full } else { store::VerifyMode::Quick };
+            let problems = r.verify_with(&id, mode, c)?;
+            Response::Verified { id, full, problems }
+        }
+        Request::Restore { repo, id, subpath, target } => {
+            let r = store::Repo::open_or_init(repo.as_ref())?;
+            let count = store::restore::restore(&r, &id, subpath.as_deref(), target.as_ref())?;
+            Response::Restored { count }
+        }
+        _ => unreachable!(),
+    })
 }

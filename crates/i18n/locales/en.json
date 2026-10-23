@@ -1,4 +1,114 @@
 {
-  "backup.file_copied": { "one": "{count} file backed up", "other": "{count} files backed up" },
-  "schema.unknown_future": { "other": "Newer format not supported (found {found}, max {max})" }
+ "backup.file_copied": {
+  "one": "{count} file backed up",
+  "other": "{count} files backed up"
+ },
+ "schema.unknown_future": {
+  "other": "Newer format not supported (found {found}, max {max})"
+ },
+ "path.not_absolute": {
+  "other": "Path is not absolute: {path}"
+ },
+ "path.invalid": {
+  "other": "Invalid path: {path}"
+ },
+ "path.source_missing": {
+  "other": "Source folder not found: {path}"
+ },
+ "path.source_not_dir": {
+  "other": "The source is not a folder: {path}"
+ },
+ "path.same": {
+  "other": "Source and destination are the same: {path}"
+ },
+ "path.dest_inside_source": {
+  "other": "The destination is inside the source: {path}"
+ },
+ "path.source_inside_dest": {
+  "other": "The source is inside the destination: {path}"
+ },
+ "path.escape": {
+  "other": "Path refused (escapes the target folder): {path}"
+ },
+ "path.non_utf8": {
+  "other": "Unsupported file name (not UTF-8): {path}"
+ },
+ "scan.unreadable": {
+  "other": "Unreadable item (not treated as deleted): {path}"
+ },
+ "scan.unsupported_type": {
+  "other": "Unsupported file type: {path}"
+ },
+ "scan.name_collision": {
+  "other": "Colliding names (case or Unicode): {paths}"
+ },
+ "backup.read_failed": {
+  "other": "Cannot read: {path}"
+ },
+ "backup.write_failed": {
+  "other": "Cannot write to the backup: {path}"
+ },
+ "backup.file_changed": {
+  "other": "File changed during copy: {path}"
+ },
+ "backup.cancelled": {
+  "other": "Backup cancelled"
+ },
+ "backup.manifest_failed": {
+  "other": "Cannot save the backup point: {path}"
+ },
+ "repo.unreadable": {
+  "other": "Backup unreadable: {path}"
+ },
+ "repo.corrupt_meta": {
+  "other": "Backup information is corrupted"
+ },
+ "repo.init_failed": {
+  "other": "Cannot initialise the backup: {path}"
+ },
+ "repo.lock_failed": {
+  "other": "Backup lock unavailable: {path}"
+ },
+ "repo.locked": {
+  "other": "Another operation is already using this backup"
+ },
+ "snapshot.unreadable": {
+  "other": "Backup point unreadable: {path}"
+ },
+ "snapshot.corrupt": {
+  "other": "Backup point corrupted: {id}"
+ },
+ "verify.object_missing": {
+  "other": "Data missing from the backup: {path}"
+ },
+ "verify.object_corrupt": {
+  "other": "Data damaged in the backup: {path}"
+ },
+ "verify.cancelled": {
+  "other": "Verification cancelled"
+ },
+ "restore.target_not_empty": {
+  "other": "The restore folder must be empty: {path}"
+ },
+ "restore.write_failed": {
+  "other": "Cannot write during restore: {path}"
+ },
+ "restore.read_failed": {
+  "other": "Cannot read during restore: {path}"
+ },
+ "restore.collision": {
+  "other": "Name collision during restore: {path}"
+ },
+ "restore.object_missing": {
+  "other": "Data missing, cannot restore: {path}"
+ },
+ "restore.object_corrupt": {
+  "other": "Data damaged, restore refused: {path}"
+ },
+ "job.busy": {
+  "other": "An operation is already running"
+ },
+ "protocol.bad_request": {
+  "other": "Invalid request"
+ }
 }

@@ -1,4 +1,114 @@
 {
-  "backup.file_copied": { "one": "{count} fichier sauvegardé", "other": "{count} fichiers sauvegardés" },
-  "schema.unknown_future": { "other": "Format plus récent non pris en charge (trouvé {found}, maximum {max})" }
+ "backup.file_copied": {
+  "one": "{count} fichier sauvegardé",
+  "other": "{count} fichiers sauvegardés"
+ },
+ "schema.unknown_future": {
+  "other": "Format plus récent non pris en charge (trouvé {found}, maximum {max})"
+ },
+ "path.not_absolute": {
+  "other": "Chemin non absolu : {path}"
+ },
+ "path.invalid": {
+  "other": "Chemin invalide : {path}"
+ },
+ "path.source_missing": {
+  "other": "Dossier source introuvable : {path}"
+ },
+ "path.source_not_dir": {
+  "other": "La source n’est pas un dossier : {path}"
+ },
+ "path.same": {
+  "other": "La source et la destination sont identiques : {path}"
+ },
+ "path.dest_inside_source": {
+  "other": "La destination est dans la source : {path}"
+ },
+ "path.source_inside_dest": {
+  "other": "La source est dans la destination : {path}"
+ },
+ "path.escape": {
+  "other": "Chemin refusé (sort du dossier cible) : {path}"
+ },
+ "path.non_utf8": {
+  "other": "Nom de fichier non pris en charge (non UTF-8) : {path}"
+ },
+ "scan.unreadable": {
+  "other": "Élément illisible (non considéré comme supprimé) : {path}"
+ },
+ "scan.unsupported_type": {
+  "other": "Type de fichier non pris en charge : {path}"
+ },
+ "scan.name_collision": {
+  "other": "Noms en collision (casse ou Unicode) : {paths}"
+ },
+ "backup.read_failed": {
+  "other": "Lecture impossible : {path}"
+ },
+ "backup.write_failed": {
+  "other": "Écriture impossible dans la sauvegarde : {path}"
+ },
+ "backup.file_changed": {
+  "other": "Fichier modifié pendant la copie : {path}"
+ },
+ "backup.cancelled": {
+  "other": "Sauvegarde annulée"
+ },
+ "backup.manifest_failed": {
+  "other": "Impossible d’enregistrer le point de sauvegarde : {path}"
+ },
+ "repo.unreadable": {
+  "other": "Sauvegarde illisible : {path}"
+ },
+ "repo.corrupt_meta": {
+  "other": "Informations de la sauvegarde corrompues"
+ },
+ "repo.init_failed": {
+  "other": "Initialisation de la sauvegarde impossible : {path}"
+ },
+ "repo.lock_failed": {
+  "other": "Verrou de la sauvegarde indisponible : {path}"
+ },
+ "repo.locked": {
+  "other": "Une autre opération utilise déjà cette sauvegarde"
+ },
+ "snapshot.unreadable": {
+  "other": "Point de sauvegarde illisible : {path}"
+ },
+ "snapshot.corrupt": {
+  "other": "Point de sauvegarde corrompu : {id}"
+ },
+ "verify.object_missing": {
+  "other": "Donnée manquante dans la sauvegarde : {path}"
+ },
+ "verify.object_corrupt": {
+  "other": "Donnée altérée dans la sauvegarde : {path}"
+ },
+ "verify.cancelled": {
+  "other": "Vérification annulée"
+ },
+ "restore.target_not_empty": {
+  "other": "Le dossier de restauration doit être vide : {path}"
+ },
+ "restore.write_failed": {
+  "other": "Écriture impossible lors de la restauration : {path}"
+ },
+ "restore.read_failed": {
+  "other": "Lecture impossible lors de la restauration : {path}"
+ },
+ "restore.collision": {
+  "other": "Collision de noms à la restauration : {path}"
+ },
+ "restore.object_missing": {
+  "other": "Donnée manquante, restauration impossible : {path}"
+ },
+ "restore.object_corrupt": {
+  "other": "Donnée altérée, restauration refusée : {path}"
+ },
+ "job.busy": {
+  "other": "Une opération est déjà en cours"
+ },
+ "protocol.bad_request": {
+  "other": "Requête invalide"
+ }
 }

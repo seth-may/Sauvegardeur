@@ -67,6 +67,7 @@ pub fn run_backup_with(source: &Path, repo_root: &Path, cancel: &AtomicBool, pro
         let Some(rel) = e.rel.to_str() else { errors.push(Event::new("path.non_utf8").arg("path", e.rel.display())); continue };
         let full = src.join(&e.rel);
         let mode = std::fs::symlink_metadata(&full).map(|m| m.mode() & 0o7777).unwrap_or(0);
+        let mut size = e.size;
         let kind = match &e.kind {
             Kind::Dir => EntryKind::Dir,
             Kind::Symlink { target } => EntryKind::Symlink { target: target.to_string_lossy().into_owned() },
@@ -75,13 +76,13 @@ pub fn run_backup_with(source: &Path, repo_root: &Path, cancel: &AtomicBool, pro
                 let mut res = ingest(&repo, &full, cancel);
                 if matches!(&res, Err(ev) if ev.code == "backup.file_changed") { res = ingest(&repo, &full, cancel); } // une relecture
                 match res {
-                    Ok((hash, n, new)) => { if new { copied += 1; bytes += n } else { reused += 1 } EntryKind::File { hash } }
+                    Ok((hash, n, new)) => { size = n; if new { copied += 1; bytes += n } else { reused += 1 } EntryKind::File { hash } }
                     Err(ev) if ev.code == "backup.cancelled" => { cancelled = true; break }
                     Err(ev) => { errors.push(ev); continue }
                 }
             }
         };
-        entries.push(ManifestEntry { path: rel.into(), kind, size: e.size, mtime_ns: e.mtime_ns, mode });
+        entries.push(ManifestEntry { path: rel.into(), kind, size, mtime_ns: e.mtime_ns, mode });
     }
     let created = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
     let status = if cancelled { SnapshotStatus::Interrupted } else if errors.is_empty() { SnapshotStatus::Succeeded } else { SnapshotStatus::Partial };

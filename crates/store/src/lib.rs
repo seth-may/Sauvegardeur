@@ -36,6 +36,9 @@ pub struct Manifest {
     pub warnings: Vec<Event>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VerifyMode { Quick, Full }
+
 pub struct Repo { pub root: PathBuf }
 
 /// Verrou exclusif du dépôt (flock) : libéré automatiquement à la fin du processus, même après crash.
@@ -107,19 +110,28 @@ impl Repo {
             .filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_suffix(".manifest")).map(String::from)).collect();
         v.sort(); v
     }
-    /// Vérifie un point : chaque objet référencé existe et son contenu correspond au hash.
+    /// Vérification complète (hash de chaque objet).
     pub fn verify(&self, id: &str) -> Result<Vec<Event>, Event> {
+        self.verify_with(id, VerifyMode::Full, &std::sync::atomic::AtomicBool::new(false))
+    }
+    /// Vérifie un point SANS rien copier. Quick : présence + taille. Full : relecture et hash. Annulable.
+    pub fn verify_with(&self, id: &str, mode: VerifyMode, cancel: &std::sync::atomic::AtomicBool) -> Result<Vec<Event>, Event> {
         let m = self.load_manifest(id)?;
+        let mut cache: std::collections::HashMap<String, Option<&'static str>> = Default::default();
         let mut problems = vec![];
         for e in &m.entries {
-            if let EntryKind::File { hash } = &e.kind {
+            if cancel.load(std::sync::atomic::Ordering::Relaxed) { return Err(Event::new("verify.cancelled")); }
+            let EntryKind::File { hash } = &e.kind else { continue };
+            let bad = *cache.entry(hash.clone()).or_insert_with(|| {
                 let p = self.object_path(hash);
-                match std::fs::read(&p) {
-                    Err(_) => problems.push(Event::new("verify.object_missing").arg("path", &e.path)),
-                    Ok(b) if blake3::hash(&b).to_hex().as_str() != hash => problems.push(Event::new("verify.object_corrupt").arg("path", &e.path)),
-                    Ok(_) => {}
-                }
-            }
+                let Ok(md) = std::fs::metadata(&p) else { return Some("verify.object_missing") };
+                if md.len() != e.size { return Some("verify.object_corrupt") }
+                if mode == VerifyMode::Quick { return None }
+                let Ok(f) = std::fs::File::open(&p) else { return Some("verify.object_missing") };
+                let mut h = blake3::Hasher::new();
+                if h.update_reader(f).is_err() || h.finalize().to_hex().as_str() != hash { Some("verify.object_corrupt") } else { None }
+            });
+            if let Some(code) = bad { problems.push(Event::new(code).arg("path", &e.path)); }
         }
         Ok(problems)
     }

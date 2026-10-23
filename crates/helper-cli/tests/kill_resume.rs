@@ -56,3 +56,22 @@ fn backup_cmd(s: &Path, r: &Path) -> String { format!(r#"{{"cmd":"backup","sourc
     send(&mut c, r#"{"cmd":"hello"}"#); assert!(wait_type(&mut rd, "hello").contains("\"protocol\":1"));
     send(&mut c, "zzz"); wait_type(&mut rd, "error"); drop(c.stdin.take()); c.wait().unwrap();
 }
+
+fn ask(c: &mut Child, rd: &mut BufReader<std::process::ChildStdout>, cmd: &str, t: &str) -> String { send(c, cmd); wait_type(rd, t) }
+
+#[test] fn verify_restore_list_via_protocol() {
+    let t = tempfile::tempdir().unwrap(); let (s, r, o) = (t.path().join("src"), t.path().join("repo"), t.path().join("out"));
+    fs::create_dir_all(&s).unwrap(); fs::write(s.join("a.txt"), "alpha").unwrap(); fs::write(s.join("é ☂.txt"), "beta").unwrap();
+    let mut c = spawn(); let mut rd = BufReader::new(c.stdout.take().unwrap());
+    assert!(ask(&mut c, &mut rd, &backup_cmd(&s, &r), "done").contains("succeeded"));
+    let l = ask(&mut c, &mut rd, &format!(r#"{{"cmd":"list","repo":"{}"}}"#, r.display()), "snapshots"); assert!(l.contains("latest_success\":\""), "{l}");
+    for full in ["false", "true"] {
+        let v = ask(&mut c, &mut rd, &format!(r#"{{"cmd":"verify","repo":"{}","full":{full}}}"#, r.display()), "verified"); assert!(v.contains("\"problems\":[]"), "{v}");
+    }
+    let id = serde_json::from_str::<serde_json::Value>(&l).unwrap()["latest_success"].as_str().unwrap().to_string();
+    let rs = ask(&mut c, &mut rd, &format!(r#"{{"cmd":"restore","repo":"{}","id":"{id}","target":"{}"}}"#, r.display(), o.display()), "restored"); assert!(rs.contains("\"count\":2"), "{rs}");
+    same_tree(&s, &o);
+    // restauration vers un dossier non vide : refusée
+    let f = ask(&mut c, &mut rd, &format!(r#"{{"cmd":"restore","repo":"{}","id":"{id}","target":"{}"}}"#, r.display(), o.display()), "failed"); assert!(f.contains("restore.target_not_empty"), "{f}");
+    drop(c.stdin.take()); c.wait().unwrap();
+}

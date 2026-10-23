@@ -124,3 +124,17 @@ fn setup() -> (tempfile::TempDir, PathBuf, PathBuf) {
     run_backup(&s, &r).unwrap();
     assert!(fs::read_dir(r.join("tmp")).unwrap().next().is_none()); assert!(!r.join("snapshots/x.tmp-write").exists());
 }
+
+#[test] fn quick_verify_catches_truncation_but_not_bitflip_full_catches_both() {
+    use store::VerifyMode::*; use std::sync::atomic::AtomicBool;
+    let (_t, s, r) = setup(); let rep = run_backup(&s, &r).unwrap(); let repo = Repo::open_or_init(&r).unwrap(); let nc = AtomicBool::new(false);
+    let m = repo.load_manifest(&rep.id).unwrap();
+    let h = match &m.entries.iter().find(|e| e.path == "sub/été ☂/é.txt").unwrap().kind { store::EntryKind::File { hash } => hash.clone(), _ => panic!() };
+    let p = repo.object_path(&h); fs::set_permissions(&p, fs::Permissions::from_mode(0o644)).unwrap();
+    fs::write(&p, "ACCENTS").unwrap(); // même taille (7), contenu différent
+    assert!(repo.verify_with(&rep.id, Quick, &nc).unwrap().is_empty(), "Quick = présence + taille seulement");
+    assert_eq!(repo.verify_with(&rep.id, Full, &nc).unwrap().len(), 1);
+    fs::write(&p, "ac").unwrap();
+    assert_eq!(repo.verify_with(&rep.id, Quick, &nc).unwrap().len(), 1);
+    assert_eq!(repo.verify_with(&rep.id, Full, &AtomicBool::new(true)).unwrap_err().code, "verify.cancelled");
+}
