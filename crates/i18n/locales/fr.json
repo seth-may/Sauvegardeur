@@ -110,5 +110,20 @@
  },
  "protocol.bad_request": {
   "other": "Requête invalide"
+ },
+ "retention.invalid_policy": {
+  "other": "Règle de conservation invalide (au moins 1 sauvegarde réussie à garder)"
+ },
+ "purge.deferred": {
+  "other": "Nettoyage reporté : il demande votre confirmation"
+ },
+ "purge.plan_stale": {
+  "other": "Le contenu de la sauvegarde a changé depuis l’aperçu : refaites l’aperçu du nettoyage"
+ },
+ "purge.unreadable_manifest": {
+  "other": "Nettoyage impossible : un point de sauvegarde est illisible ({id})"
+ },
+ "purge.delete_failed": {
+  "other": "Suppression impossible : {path}"
  }
 }

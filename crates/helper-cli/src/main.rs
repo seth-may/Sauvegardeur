@@ -11,7 +11,10 @@ use std::sync::{Arc, Mutex};
 enum Request { Hello, Ping, Cancel, Backup { source: String, repo: String },
     Verify { repo: String, id: Option<String>, #[serde(default)] full: bool },
     Restore { repo: String, id: String, subpath: Option<String>, target: String },
-    List { repo: String } }
+    List { repo: String },
+    PurgePlan { repo: String, keep: usize },
+    /// `user_present` vaut faux par défaut : une tâche automatique ne purge jamais.
+    PurgeExecute { repo: String, keep: usize, plan_id: String, #[serde(default)] user_present: bool } }
 
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -22,6 +25,8 @@ enum Response {
     Failed { event: Event },
     Verified { id: String, full: bool, problems: Vec<Event> },
     Restored { count: u64 },
+    PurgePlan { plan: retention::PurgePlan },
+    Purged { report: retention::PurgeReport },
     Snapshots { ids: Vec<String>, latest_success: Option<String> },
 }
 
@@ -40,7 +45,7 @@ fn main() {
             Ok(Request::Hello) => send(&out, &Response::Hello { protocol: PROTOCOL_VERSION }),
             Ok(Request::Ping) => send(&out, &Response::Pong),
             Ok(Request::Cancel) => cancel.store(true, Ordering::Relaxed),
-            Ok(req @ (Request::Backup { .. } | Request::Verify { .. } | Request::Restore { .. })) => {
+            Ok(req @ (Request::Backup { .. } | Request::Verify { .. } | Request::Restore { .. } | Request::PurgePlan { .. } | Request::PurgeExecute { .. })) => {
                 if busy.swap(true, Ordering::SeqCst) { send(&out, &Response::Failed { event: Event::new("job.busy") }); continue; }
                 cancel.store(false, Ordering::Relaxed);
                 let (o, b, c) = (out.clone(), busy.clone(), cancel.clone());
@@ -80,6 +85,14 @@ fn run_job(req: Request, o: &Out, c: &AtomicBool) -> Result<Response, Event> {
             let r = store::Repo::open_or_init(repo.as_ref())?;
             let count = store::restore::restore(&r, &id, subpath.as_deref(), target.as_ref())?;
             Response::Restored { count }
+        }
+        Request::PurgePlan { repo, keep } => {
+            let r = store::Repo::open_or_init(repo.as_ref())?;
+            Response::PurgePlan { plan: retention::plan(&r, keep)? }
+        }
+        Request::PurgeExecute { repo, keep, plan_id, user_present } => {
+            let r = store::Repo::open_or_init(repo.as_ref())?;
+            Response::Purged { report: retention::execute(&r, keep, &plan_id, user_present)? }
         }
         _ => unreachable!(),
     })

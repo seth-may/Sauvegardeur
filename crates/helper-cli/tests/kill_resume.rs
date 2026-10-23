@@ -75,3 +75,16 @@ fn ask(c: &mut Child, rd: &mut BufReader<std::process::ChildStdout>, cmd: &str, 
     let f = ask(&mut c, &mut rd, &format!(r#"{{"cmd":"restore","repo":"{}","id":"{id}","target":"{}"}}"#, r.display(), o.display()), "failed"); assert!(f.contains("restore.target_not_empty"), "{f}");
     drop(c.stdin.take()); c.wait().unwrap();
 }
+
+#[test] fn purge_via_protocol_needs_confirmed_plan_and_user() {
+    let t = tempfile::tempdir().unwrap(); let (s, r) = (t.path().join("src"), t.path().join("repo")); fs::create_dir_all(&s).unwrap();
+    let mut c = spawn(); let mut rd = BufReader::new(c.stdout.take().unwrap());
+    for i in 0..2 { fs::write(s.join("a"), format!("v{i}")).unwrap(); ask(&mut c, &mut rd, &backup_cmd(&s, &r), "done"); std::thread::sleep(std::time::Duration::from_millis(1100)); }
+    let pl = ask(&mut c, &mut rd, &format!(r#"{{"cmd":"purge_plan","repo":"{}","keep":1}}"#, r.display()), "purge_plan");
+    let v: serde_json::Value = serde_json::from_str(&pl).unwrap(); let pid = v["plan"]["plan_id"].as_str().unwrap().to_string();
+    assert_eq!(v["plan"]["remove"].as_array().unwrap().len(), 1);
+    // sans « user_present » : différé
+    let f = ask(&mut c, &mut rd, &format!(r#"{{"cmd":"purge_execute","repo":"{}","keep":1,"plan_id":"{pid}"}}"#, r.display()), "failed"); assert!(f.contains("purge.deferred"), "{f}");
+    let ok = ask(&mut c, &mut rd, &format!(r#"{{"cmd":"purge_execute","repo":"{}","keep":1,"plan_id":"{pid}","user_present":true}}"#, r.display()), "purged"); assert!(ok.contains("\"removed_snapshots\":1"), "{ok}");
+    drop(c.stdin.take()); c.wait().unwrap();
+}

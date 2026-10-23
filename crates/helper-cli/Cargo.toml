@@ -6,6 +6,7 @@ publish.workspace = true
 [dependencies]
 core-types = { path = "../core-types" }
 store = { path = "../store" }
+retention = { path = "../retention" }
 serde.workspace = true
 serde_json.workspace = true
 [dev-dependencies]

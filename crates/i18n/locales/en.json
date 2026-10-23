@@ -110,5 +110,20 @@
  },
  "protocol.bad_request": {
   "other": "Invalid request"
+ },
+ "retention.invalid_policy": {
+  "other": "Invalid retention rule (keep at least 1 successful backup)"
+ },
+ "purge.deferred": {
+  "other": "Cleanup postponed: it needs your confirmation"
+ },
+ "purge.plan_stale": {
+  "other": "The backup changed since the preview: please preview the cleanup again"
+ },
+ "purge.unreadable_manifest": {
+  "other": "Cleanup impossible: a backup point is unreadable ({id})"
+ },
+ "purge.delete_failed": {
+  "other": "Cannot delete: {path}"
  }
 }
