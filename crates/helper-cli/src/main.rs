@@ -1,36 +1,58 @@
-//! Helper local : protocole JSON-lines (stdin -> stdout), sans réseau. M0 : `hello` et `ping` seulement.
-use core_types::PROTOCOL_VERSION;
+//! Helper local : protocole JSON-lines (stdin -> stdout), sans réseau.
+//! Commandes : hello, ping, backup{source,repo}, cancel. Un seul travail à la fois.
+use core_types::{Event, PROTOCOL_VERSION};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 #[derive(Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
-enum Request { Hello, Ping }
+enum Request { Hello, Ping, Cancel, Backup { source: String, repo: String } }
 
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum Response { Hello { protocol: u32 }, Pong, Error { code: String } }
+enum Response {
+    Hello { protocol: u32 }, Pong, Error { code: String },
+    Progress { total: u64, processed: u64, copied: u64, bytes: u64 },
+    Done { id: String, status: store::SnapshotStatus, scanned: u64, copied: u64, reused: u64, bytes: u64, errors: Vec<Event> },
+    Failed { event: Event },
+}
 
-fn handle(line: &str) -> Response {
-    match serde_json::from_str::<Request>(line) {
-        Ok(Request::Hello) => Response::Hello { protocol: PROTOCOL_VERSION },
-        Ok(Request::Ping) => Response::Pong,
-        Err(_) => Response::Error { code: "protocol.bad_request".into() },
-    }
+type Out = Arc<Mutex<std::io::Stdout>>;
+fn send(out: &Out, r: &Response) {
+    let mut o = out.lock().unwrap();
+    let _ = writeln!(o, "{}", serde_json::to_string(r).unwrap()); let _ = o.flush();
 }
 
 fn main() {
-    let out = std::io::stdout();
+    let out: Out = Arc::new(Mutex::new(std::io::stdout()));
+    let busy = Arc::new(AtomicBool::new(false));
+    let cancel = Arc::new(AtomicBool::new(false));
     for line in std::io::stdin().lock().lines().map_while(Result::ok) {
-        let mut o = out.lock();
-        let _ = writeln!(o, "{}", serde_json::to_string(&handle(&line)).unwrap());
-        let _ = o.flush();
+        match serde_json::from_str::<Request>(&line) {
+            Ok(Request::Hello) => send(&out, &Response::Hello { protocol: PROTOCOL_VERSION }),
+            Ok(Request::Ping) => send(&out, &Response::Pong),
+            Ok(Request::Cancel) => cancel.store(true, Ordering::Relaxed),
+            Ok(Request::Backup { source, repo }) => {
+                if busy.swap(true, Ordering::SeqCst) { send(&out, &Response::Failed { event: Event::new("job.busy") }); continue; }
+                cancel.store(false, Ordering::Relaxed);
+                let (o, b, c) = (out.clone(), busy.clone(), cancel.clone());
+                std::thread::spawn(move || {
+                    let o2 = o.clone();
+                    let res = store::backup::run_backup_with(source.as_ref(), repo.as_ref(), &c, &mut |p| {
+                        send(&o2, &Response::Progress { total: p.total, processed: p.processed, copied: p.copied, bytes: p.bytes })
+                    });
+                    match res {
+                        Ok(r) => send(&o, &Response::Done { id: r.id, status: r.status, scanned: r.scanned, copied: r.copied, reused: r.reused, bytes: r.bytes, errors: r.errors }),
+                        Err(event) => send(&o, &Response::Failed { event }),
+                    }
+                    b.store(false, Ordering::SeqCst);
+                });
+            }
+            Err(_) => send(&out, &Response::Error { code: "protocol.bad_request".into() }),
+        }
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test] fn hello() { assert!(matches!(handle(r#"{"cmd":"hello"}"#), Response::Hello { protocol: 1 })); }
-    #[test] fn bad() { assert!(matches!(handle("zzz"), Response::Error { .. })); }
+    // Fin de stdin : laisser le travail en cours se terminer proprement (ou être tué par le parent).
+    while busy.load(Ordering::SeqCst) { std::thread::sleep(std::time::Duration::from_millis(20)); }
 }

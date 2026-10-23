@@ -16,7 +16,7 @@ struct RepoMeta { format_version: u32, repo_id: String }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SnapshotStatus { Succeeded, Partial }
+pub enum SnapshotStatus { Succeeded, Partial, Interrupted }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -37,6 +37,9 @@ pub struct Manifest {
 }
 
 pub struct Repo { pub root: PathBuf }
+
+/// Verrou exclusif du dépôt (flock) : libéré automatiquement à la fin du processus, même après crash.
+pub struct RepoLock(#[allow(dead_code)] std::fs::File);
 
 pub(crate) fn io_err(code: &str, p: &Path, e: &std::io::Error) -> Event {
     Event::new(code).arg("path", p.display()).arg("kind", e.kind())
@@ -67,6 +70,23 @@ impl Repo {
             atomic_write(&meta, &serde_json::to_vec_pretty(&m).unwrap()).map_err(|e| io_err("repo.init_failed", &meta, &e))?;
         }
         Ok(Repo { root: root.to_path_buf() })
+    }
+    /// Un seul écrivain à la fois. Sous verrou, nettoie les résidus d'un arrêt brutal (tmp/, *.tmp-write).
+    pub fn lock(&self) -> Result<RepoLock, Event> {
+        let p = self.root.join("lock");
+        let f = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&p).map_err(|e| io_err("repo.lock_failed", &p, &e))?;
+        match f.try_lock() {
+            Ok(()) => {}
+            Err(std::fs::TryLockError::WouldBlock) => return Err(Event::new("repo.locked")),
+            Err(std::fs::TryLockError::Error(e)) => return Err(io_err("repo.lock_failed", &p, &e)),
+        }
+        for e in std::fs::read_dir(self.root.join("tmp")).into_iter().flatten().flatten() { let _ = std::fs::remove_file(e.path()); }
+        for d in [self.root.clone(), self.root.join("snapshots")] {
+            for e in std::fs::read_dir(d).into_iter().flatten().flatten() {
+                if e.path().extension().is_some_and(|x| x == "tmp-write") { let _ = std::fs::remove_file(e.path()); }
+            }
+        }
+        Ok(RepoLock(f))
     }
     pub fn object_path(&self, hash: &str) -> PathBuf { self.root.join("objects").join(&hash[..2]).join(&hash[2..]) }
     pub fn manifest_path(&self, id: &str) -> PathBuf { self.root.join("snapshots").join(format!("{id}.manifest")) }

@@ -89,3 +89,38 @@ fn setup() -> (tempfile::TempDir, PathBuf, PathBuf) {
     assert_eq!(run_backup(&s, &s.join("in")).unwrap_err().code, "path.dest_inside_source");
     let _ = t;
 }
+
+#[test] fn concurrent_run_refused_by_lock() {
+    let (_t, s, r) = setup(); run_backup(&s, &r).unwrap();
+    let repo = Repo::open_or_init(&r).unwrap(); let _g = repo.lock().unwrap();
+    assert_eq!(repo.lock().err().unwrap().code, "repo.locked");
+    assert_eq!(run_backup(&s, &r).unwrap_err().code, "repo.locked");
+}
+#[test] fn cancel_gives_interrupted_not_success_and_resume_completes() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let (t, s, r) = setup(); let ok = run_backup(&s, &r).unwrap();
+    for i in 0..20 { fs::write(s.join(format!("n{i}")), format!("new{i}")).unwrap(); }
+    let cancel = AtomicBool::new(false); let mut seen = 0;
+    let rep = store::backup::run_backup_with(&s, &r, &cancel, &mut |p| { seen += 1; if p.processed >= 5 { cancel.store(true, Ordering::Relaxed) } }).unwrap();
+    assert_eq!(rep.status, SnapshotStatus::Interrupted); assert!(seen > 0);
+    let repo = Repo::open_or_init(&r).unwrap();
+    assert_eq!(repo.latest_success(), Some(ok.id.clone()), "la dernière réussite doit rester");
+    let again = run_backup(&s, &r).unwrap();
+    assert_eq!(again.status, SnapshotStatus::Succeeded); assert!(again.reused > 0, "objets déjà validés non recopiés");
+    let out = t.path().join("o"); restore(&repo, &again.id, None, &out).unwrap();
+    assert_eq!(fs::read_to_string(out.join("n19")).unwrap(), "new19");
+}
+#[test] fn truncated_object_is_replaced_not_trusted() {
+    let (_t, s, r) = setup(); let rep = run_backup(&s, &r).unwrap(); let repo = Repo::open_or_init(&r).unwrap();
+    let m = repo.load_manifest(&rep.id).unwrap();
+    let h = match &m.entries.iter().find(|e| e.path == "a.txt").unwrap().kind { store::EntryKind::File { hash } => hash.clone(), _ => panic!() };
+    let p = repo.object_path(&h); fs::set_permissions(&p, fs::Permissions::from_mode(0o644)).unwrap(); fs::write(&p, "al").unwrap(); // tronqué
+    let again = run_backup(&s, &r).unwrap();
+    assert!(repo.verify(&again.id).unwrap().is_empty(), "l'objet tronqué doit avoir été réécrit");
+}
+#[test] fn stale_tmp_cleaned_after_crash() {
+    let (_t, s, r) = setup(); run_backup(&s, &r).unwrap();
+    fs::write(r.join("tmp/123-0"), "residu").unwrap(); fs::write(r.join("snapshots/x.tmp-write"), "r").unwrap();
+    run_backup(&s, &r).unwrap();
+    assert!(fs::read_dir(r.join("tmp")).unwrap().next().is_none()); assert!(!r.join("snapshots/x.tmp-write").exists());
+}
